@@ -6,6 +6,7 @@ CultureInfo.DefaultThreadCurrentCulture = ukCulture;
 CultureInfo.DefaultThreadCurrentUICulture = ukCulture;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Services.Configure<PowerPositionSettings>(builder.Configuration);
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();
