@@ -3,19 +3,19 @@ using Microsoft.Extensions.Options;
 
 namespace PowerPositionService
 {
-    public class Worker(ILogger<Worker> logger, IOptions<PowerPositionSettings> settings) : BackgroundService
+    public class PowerPositionWorker(ILogger<PowerPositionWorker> _logger, IOptions<PowerPositionSettings> _settings, IPowerService _powerService) : BackgroundService
     {
-        private readonly PowerPositionSettings _settings = settings.Value;
+        private readonly PowerPositionSettings _settings = _settings.Value;
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            await GeneratePowerPosition();
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (logger.IsEnabled(LogLevel.Information))
+                if (_logger.IsEnabled(LogLevel.Information))
                 {
-                    logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);          
+                    _logger.LogInformation("Running Generate Power Positions Job: {time} (Local time)", DateTime.Now);
                 }
+                await GeneratePowerPosition();
                 await Task.Delay(TimeSpan.FromMinutes(_settings.IntervalMins), stoppingToken);
             }
         }
@@ -23,8 +23,7 @@ namespace PowerPositionService
         {
             try
             {
-                PowerService powerService = new PowerService();
-                var trades = await powerService.GetTradesAsync(DateTime.Now);
+                var trades = await _powerService.GetTradesAsync(DateTime.Now);
 
                 Dictionary<DateTime, Double> report = new Dictionary<DateTime, Double>();
                 DateTime startTime = DateTime.Now.AddDays(-1).Date.AddHours(23);
@@ -44,16 +43,12 @@ namespace PowerPositionService
                         report[correspondingDate] += periodVolume;
                     }
                 }
-                foreach (var entry in report)
-                {
-                    logger.LogInformation("Local Time: {time}, Volume: {volume}", entry.Key.ToString("HH:mm"), entry.Value);
-                }
 
                 await GenerateCSV(report, DateTime.Now);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error generating power position");
+                _logger.LogError(ex, "Error generating power position");
             }
         }
         public async Task GenerateCSV(Dictionary<DateTime, Double> report, DateTime generatedDate)
