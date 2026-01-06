@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using System.Text.RegularExpressions;
 
 namespace PowerPositionService.Tests
 {
@@ -37,26 +38,6 @@ namespace PowerPositionService.Tests
         }
 
         [Test]
-        public async Task GeneratePowerPosition_WithValidTrades_AggregatesVolumesCorrectly()
-        {
-            // Arrange
-            var mockTrades = CreateMockTrades();
-            _powerServiceMock.Setup(x => x.GetTradesAsync(It.IsAny<DateTime>()))
-                .ReturnsAsync(mockTrades);
-
-            var worker = new PowerPositionWorker(_logger, _settings, _powerServiceMock.Object);
-
-            // Act
-            await worker.GeneratePowerPosition();
-
-            // Assert
-            _powerServiceMock.Verify(x => x.GetTradesAsync(It.IsAny<DateTime>()), Times.Once);
-            Assert.That(Directory.Exists(_testOutputDir), Is.True);
-            var files = Directory.GetFiles(_testOutputDir, "PowerPosition_*.csv");
-            Assert.That(files.Length, Is.EqualTo(1));
-        }
-
-        [Test]
         public async Task GeneratePowerPosition_SuccessfullyGeneratesCsv()
         {
             // Arrange
@@ -77,6 +58,39 @@ namespace PowerPositionService.Tests
             Assert.That(lines.Length, Is.EqualTo(25));
             Assert.That(lines[1], Does.Contain("150"));
             Assert.That(lines[12], Does.Contain("80"));
+        }
+
+        [Test]
+        public async Task GeneratePowerPosition_GeneratesCorrectFilenameFormat()
+        {
+            // Arrange
+            var trades = CreateMockTrades();
+            var beforeGeneration = DateTime.Now;
+
+            _powerServiceMock.Setup(x => x.GetTradesAsync(It.IsAny<DateTime>()))
+                .ReturnsAsync(trades);
+
+            var worker = new PowerPositionWorker(_logger, _settings, _powerServiceMock.Object);
+
+            // Act
+            await worker.GeneratePowerPosition();
+            var afterGeneration = DateTime.Now;
+
+            // Assert
+            var files = Directory.GetFiles(_testOutputDir, "PowerPosition_*.csv");
+            Assert.That(files.Length, Is.EqualTo(1));
+
+            var filename = Path.GetFileName(files[0]);
+            var filenamePattern = @"^PowerPosition_\d{8}_\d{4}\.csv$";
+            Assert.That(Regex.IsMatch(filename, filenamePattern), Is.True);
+
+            var timestampMatch = Regex.Match(filename, @"PowerPosition_(\d{8})_(\d{4})\.csv");
+            var dateStr = timestampMatch.Groups[1].Value;
+            var timeStr = timestampMatch.Groups[2].Value;
+            
+            var fileDateTime = DateTime.ParseExact($"{dateStr}_{timeStr}", "yyyyMMdd_HHmm", null);
+            Assert.That(fileDateTime, Is.GreaterThanOrEqualTo(beforeGeneration.AddMinutes(-1)));
+            Assert.That(fileDateTime, Is.LessThanOrEqualTo(afterGeneration.AddMinutes(1)));
         }
 
         private List<PowerTrade> CreateMockTrades()
@@ -100,19 +114,6 @@ namespace PowerPositionService.Tests
             }
 
             return new List<PowerTrade> { trade1, trade2 };
-        }
-
-        private Dictionary<DateTime, double> CreateTestReport()
-        {
-            var report = new Dictionary<DateTime, double>();
-            var startTime = DateTime.Now.Date.AddHours(23).AddDays(-1);
-
-            for (int i = 0; i < 24; i++)
-            {
-                report[startTime.AddHours(i)] = 100.0 + i;
-            }
-
-            return report;
         }
     }
 }

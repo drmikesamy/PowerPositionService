@@ -1,5 +1,6 @@
-using Services;
 using Microsoft.Extensions.Options;
+using Services;
+using System.Text;
 
 namespace PowerPositionService
 {
@@ -11,16 +12,13 @@ namespace PowerPositionService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    _logger.LogInformation("Running Generate Power Positions Job: {time} (Local time)", DateTime.Now);
-                }
                 await GeneratePowerPosition();
                 await Task.Delay(TimeSpan.FromMinutes(_settings.IntervalMins), stoppingToken);
             }
         }
         public async Task GeneratePowerPosition()
         {
+            _logger.LogInformation("Running Generate Power Positions Job: {time} (Local time)", DateTime.Now);
             try
             {
                 var trades = await _powerService.GetTradesAsync(DateTime.Now);
@@ -45,27 +43,32 @@ namespace PowerPositionService
                 }
 
                 await GenerateCSV(report, DateTime.Now);
+                _logger.LogInformation("Successfully completed Power Positions Job: {time} (Local time)", DateTime.Now);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error generating power position");
+                _logger.LogError(ex, "Error completing Power Positions Job");
             }
         }
-        public async Task GenerateCSV(Dictionary<DateTime, Double> report, DateTime generatedDate)
+        private async Task GenerateCSV(Dictionary<DateTime, Double> report, DateTime generatedDate)
         {
             if (!Directory.Exists(_settings.CsvOutputDir))
             {
                 Directory.CreateDirectory(_settings.CsvOutputDir);
             }
 
-            string filePath = Path.Combine(_settings.CsvOutputDir, $"PowerPosition_{generatedDate.ToString("yyyyMMdd_HHmm")}.csv");
-            string csvHeaderLine = $"Local Time,Volume";
-            await File.AppendAllTextAsync(filePath, csvHeaderLine + Environment.NewLine);
-            foreach (var entry in report)
+            string fileName = $"PowerPosition_{generatedDate:yyyyMMdd_HHmm}.csv";
+            string filePath = Path.Combine(_settings.CsvOutputDir, fileName);
+
+            var csvBuilder = new StringBuilder();
+            csvBuilder.AppendLine("Local Time,Volume");
+
+            foreach (var entry in report.OrderBy(x => x.Key))
             {
-                string csvLine = $"{entry.Key.ToString("HH:mm")},{entry.Value}";
-                await File.AppendAllTextAsync(filePath, csvLine + Environment.NewLine);
+                csvBuilder.AppendLine($"{entry.Key:HH:mm},{entry.Value}");
             }
+
+            await File.WriteAllTextAsync(filePath, csvBuilder.ToString());
         }
     }
 }
