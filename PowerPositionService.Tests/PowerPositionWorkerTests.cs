@@ -49,7 +49,7 @@ namespace PowerPositionService.Tests
             var worker = new PowerPositionWorker(_logger, _settings, _powerServiceMock.Object);
 
             // Act
-            await worker.GeneratePowerPosition();
+            await worker.GeneratePowerPosition(new DateTime(2015, 04, 01));
 
             // Assert
             var files = Directory.GetFiles(_testOutputDir, "PowerPosition_*.csv");
@@ -65,7 +65,7 @@ namespace PowerPositionService.Tests
         {
             // Arrange
             var trades = CreateMockTrades();
-            var beforeGeneration = DateTime.Now;
+            var extractDateTime = new DateTime(2015, 04, 01);
 
             _powerServiceMock.Setup(x => x.GetTradesAsync(It.IsAny<DateTime>()))
                 .ReturnsAsync(trades);
@@ -73,8 +73,7 @@ namespace PowerPositionService.Tests
             var worker = new PowerPositionWorker(_logger, _settings, _powerServiceMock.Object);
 
             // Act
-            await worker.GeneratePowerPosition();
-            var afterGeneration = DateTime.Now;
+            await worker.GeneratePowerPosition(extractDateTime);
 
             // Assert
             var files = Directory.GetFiles(_testOutputDir, "PowerPosition_*.csv");
@@ -89,8 +88,7 @@ namespace PowerPositionService.Tests
             var timeStr = timestampMatch.Groups[2].Value;
             
             var fileDateTime = DateTime.ParseExact($"{dateStr}_{timeStr}", "yyyyMMdd_HHmm", null);
-            Assert.That(fileDateTime, Is.GreaterThanOrEqualTo(beforeGeneration.AddMinutes(-1)));
-            Assert.That(fileDateTime, Is.LessThanOrEqualTo(afterGeneration.AddMinutes(1)));
+            Assert.That(fileDateTime, Is.EqualTo(extractDateTime));
         }
 
         private List<PowerTrade> CreateMockTrades()
