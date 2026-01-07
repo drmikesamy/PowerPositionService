@@ -12,19 +12,34 @@ namespace PowerPositionService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await GeneratePowerPosition();
+                await GeneratePowerPosition(DateTime.Now);
                 await Task.Delay(TimeSpan.FromMinutes(_settings.IntervalMins), stoppingToken);
             }
         }
-        public async Task GeneratePowerPosition()
+        public async Task GeneratePowerPosition(DateTime extractTime)
         {
-            _logger.LogInformation("Running Generate Power Positions Job: {time} (Local time)", DateTime.Now);
+            _logger.LogInformation("Running Generate Power Positions Job: {time} (Local time)", extractTime);
+
             try
             {
-                var trades = await _powerService.GetTradesAsync(DateTime.Now);
+                IEnumerable<PowerTrade> trades = default!;
+                int retryCount = 0;
+                while (trades == null && retryCount < 3)
+                {
+                    try
+                    {
+                        trades = await _powerService.GetTradesAsync(extractTime);
+                    }
+                    catch
+                    {
+                        retryCount++;
+                        if (retryCount == 3) throw;
+                        await Task.Delay(1000);
+                    }
+                }
 
                 Dictionary<DateTime, Double> report = new Dictionary<DateTime, Double>();
-                DateTime startTime = DateTime.Now.AddDays(-1).Date.AddHours(23);
+                DateTime startTime = extractTime.AddDays(-1).Date.AddHours(23);
 
                 foreach (var trade in trades)
                 {
@@ -42,8 +57,8 @@ namespace PowerPositionService
                     }
                 }
 
-                await GenerateCSV(report, DateTime.Now);
-                _logger.LogInformation("Successfully completed Power Positions Job: {time} (Local time)", DateTime.Now);
+                await GenerateCSV(report, extractTime);
+                _logger.LogInformation("Successfully completed Power Positions Job: {time} (Local time)", extractTime);
             }
             catch (Exception ex)
             {
